@@ -1,53 +1,37 @@
-"""Компоненты интерфейса: auth."""
-
-from __future__ import annotations
-
-import tkinter as tk
-from tkinter import messagebox, ttk
-
-from ...models import BusinessAnalyst, Client, Manager, Role
+"""Sign-in uses local account validation and a session token."""
+from ...models import Client, Manager
+from ..widgets import label, button, entry, card
 
 
 class AuthScreens:
+    def show_login(self):
+        self.page("Войдите в систему")
+        label(self.body, "Отзывы клиентов, ответы команды и аналитика — в одном месте.")
+        self.login_fields()
+        self.demo_accounts()
 
-    def show_login(self) -> None:
-        self._clear()
-        self._header("Добро пожаловать", "Платформа учёта и анализа клиентского опыта и отзывов")
-        content = self._content()
-        card = self._card(content, 24)
-        ttk.Label(card, text="Вход в систему", style="SubTitle.TLabel").pack(anchor="w", pady=(0, 14))
-        ttk.Label(card, text="Выберите роль").pack(anchor="w")
-        role_var = tk.StringVar(value=Role.CLIENT.value)
-        role_row = ttk.Frame(card, style="Card.TFrame")
-        role_row.pack(fill="x", pady=(5, 14))
-        for role in Role:
-            ttk.Radiobutton(role_row, text=role.value, variable=role_var, value=role.value).pack(side="left", padx=(0, 18))
-        ttk.Label(card, text="Имя пользователя").pack(anchor="w")
-        name = ttk.Entry(card, width=42)
-        name.insert(0, "Анна")
-        name.pack(anchor="w", pady=(5, 12))
-        ttk.Label(card, text="Электронная почта").pack(anchor="w")
-        email = ttk.Entry(card, width=42)
-        email.insert(0, "user@example.com")
-        email.pack(anchor="w", pady=(5, 16))
-        ttk.Label(card, text="Пароль").pack(anchor="w")
-        password = ttk.Entry(card, width=42, show="*")
-        password.pack(anchor="w", pady=(5, 16))
-        self._button(card, "Войти", lambda: self._authenticate(role_var.get(), name.get(), email.get(), password.get()), True).pack(anchor="w")
-        ttk.Label(content, text="Демонстрационный интерфейс лабораторной работы. Данные хранятся только до закрытия приложения.").pack(anchor="w", pady=(16, 0))
+    def login_fields(self):
+        frame = card(self.body)
+        self.email = entry(frame, "Электронная почта")
+        self.password = entry(frame, "Пароль", True)
+        button(frame, "Войти", lambda: self.guarded(self.authenticate))
 
-    def _authenticate(self, role: str, name: str, email: str, password: str) -> None:
-        if not name.strip() or not email.strip() or not password:
-            messagebox.showerror("Ошибка входа", "Заполните имя, адрес электронной почты и пароль.")
-            return
-        self.role = Role(role)
-        key = (self.role, email.strip().casefold())
-        if self.role == Role.CLIENT:
-            self.user = self.users.setdefault(key, Client(email=email.strip(), name=name.strip()))
-            self.show_client_home()
-        elif self.role == Role.MANAGER:
-            self.user = self.users.setdefault(key, Manager(email=email.strip(), name=name.strip()))
-            self.show_manager_home()
-        else:
-            self.user = self.users.setdefault(key, BusinessAnalyst(email=email.strip(), name=name.strip()))
-            self.show_analyst_home()
+    def demo_accounts(self):
+        label(self.body, "Тестовые аккаунты · пароль у всех: demo123")
+        for caption, email in [("Клиент", "client@example.com"), ("Менеджер", "manager@example.com"), ("Аналитик", "analyst@example.com")]:
+            button(self.body, caption + " · " + email, lambda value=email: self.fill_account(value))
+        label(self.body, "Демонстрационные данные хранятся до закрытия приложения.")
+
+    def fill_account(self, email):
+        self.email.set(email)
+        self.password.set("demo123")
+
+    def authenticate(self):
+        self.token = self.s.auth.login(self.email.get(), self.password.get())
+        self.page("Проверка сессии…")
+        self.root.after(100, self.resolve_role)
+
+    def resolve_role(self):
+        self.user = self.s.auth.resolve(self.token)
+        self.role = "Клиент" if isinstance(self.user, Client) else "Менеджер" if isinstance(self.user, Manager) else "Бизнес-аналитик"
+        self.home()

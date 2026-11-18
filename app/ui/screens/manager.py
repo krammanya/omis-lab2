@@ -1,92 +1,87 @@
-"""Компоненты интерфейса: manager."""
-
-from __future__ import annotations
-
-import tkinter as tk
-from tkinter import messagebox, ttk
-
-from ...models import Review, ReviewDraft
+"""Manager boundary is used by the list and reply screens."""
+from tkinter import messagebox
+from ...models import ReviewDraft
+from ..widgets import label, button, choice, text_area, metrics, table, card
 
 
 class ManagerScreens:
+    def manager_home(self):
+        self.page("Рабочее место менеджера")
+        reviews = self.s.panel.open_review_list()
+        metrics(self.body, {"Отзывы": len(reviews), "Без ответа": sum(not r.reply_id for r in reviews), "На проверку": sum(r.suspicious for r in reviews)})
+        self.manager_filters()
+        self.review_list()
 
-    def show_manager_home(self) -> None:
-        self._clear()
-        self._header("Рабочее место менеджера", "Новые отзывы, анализ и ответы клиентам")
-        content = self._content()
-        self._card(content)
-        card = content.winfo_children()[0]
-        all_reviews = self.reviews.get_reviews()
-        ttk.Label(card, text=f"Всего отзывов: {len(all_reviews)}", style="SubTitle.TLabel").pack(anchor="w")
-        self._button(card, "Открыть список отзывов", self.show_manager_reviews, True).pack(anchor="w", pady=(14, 4))
-        if all_reviews:
-            ttk.Label(card, text=self.notifications.send(self.user, all_reviews[-1]), style="Card.TLabel").pack(anchor="w", pady=(12, 0))
-        self._nav("manager")
+    def manager_filters(self):
+        self.sentiment = choice(self.body, "Тональность", ["Все", "Позитивная", "Негативная", "Нейтральная"])
+        self.status_filter = choice(self.body, "Статус", ["Все", "Без ответа", "На проверку"])
+        button(self.body, "Применить фильтры", self.review_list)
 
-    def show_manager_reviews(self) -> None:
-        self._clear()
-        self._header("Отзывы клиентов", "Выберите отзыв для просмотра анализа и ответа")
-        content = self._content()
-        table = ttk.Treeview(content, columns=("date", "product", "rating", "sentiment", "text"), show="headings")
-        for key, label, width in (("date", "Дата", 110), ("product", "Продукт", 170), ("rating", "Оценка", 80), ("sentiment", "Тональность", 120), ("text", "Текст", 430)):
-            table.heading(key, text=label)
-            table.column(key, width=width, anchor="w")
-        table.pack(fill="both", expand=True)
-        reviews = self.reviews.get_reviews()
-        for review in reviews:
-            result = self.analysis.analyze(review)
-            product = next((p.name for p in self.products if p.id == review.product_id), "Продукт")
-            table.insert("", "end", iid=review.id, values=(review.created_at.strftime("%d.%m.%Y"), product, f"{review.rating}/5", result.sentiment, review.text[:75]))
-        self._button(content, "Открыть выбранный отзыв", lambda: self._open_selected_review(table), True).pack(anchor="w", pady=12)
-        self._nav("manager")
+    def matches(self, review):
+        result = self.s.results.get_result(review.id)
+        tone = self.sentiment.get() == "Все" or result.sentiment == self.sentiment.get()
+        status = self.status_filter.get() == "Все" or (not review.reply_id if self.status_filter.get() == "Без ответа" else review.suspicious)
+        return tone and status
 
-    def _open_selected_review(self, table: ttk.Treeview) -> None:
-        selected = table.selection()
-        if not selected:
-            messagebox.showinfo("Выберите отзыв", "Сначала выберите строку в таблице.")
-            return
-        review = next(item for item in self.reviews.get_reviews() if item.id == selected[0])
-        self.show_review_detail(review)
+    def review_list(self):
+        if hasattr(self, "review_table") and self.review_table.winfo_exists():
+            self.review_table.destroy()
+        reviews = self.s.panel.open_review_list(self.matches)
+        self.review_table = table(self.body, [("date", "Дата"), ("product", "Продукт"), ("rating", "Оценка"), ("tone", "Тональность"), ("status", "Статус")], [(r.id, self.review_row(r)) for r in reviews], self.open_review)
+        label(self.body, "Двойной щелчок по строке — открыть отзыв и ответить.")
 
-    def show_review_detail(self, review: Review) -> None:
-        self._clear()
-        result = self.analysis.analyze(review)
-        product = next((p.name for p in self.products if p.id == review.product_id), "Продукт")
-        self._header("Карточка отзыва", f"{product} · {review.created_at.strftime('%d.%m.%Y')}")
-        content = self._content()
-        card = self._card(content)
-        ttk.Label(card, text=f"Оценка: {review.rating}/5 · Тональность: {result.sentiment}", style="SubTitle.TLabel").pack(anchor="w")
-        ttk.Label(card, text=review.text, style="Card.TLabel", wraplength=850, justify="left").pack(anchor="w", pady=(14, 10))
-        ttk.Label(card, text=f"Категории: {', '.join(result.categories) or 'не определены'}", style="Card.TLabel").pack(anchor="w", pady=(0, 14))
-        ttk.Label(card, text="Ответ клиенту").pack(anchor="w")
-        reply = tk.Text(card, height=5, width=90, wrap="word", font=("Segoe UI", 10))
-        reply.pack(fill="x", pady=(5, 10))
-        draft = next((item for item in self.storage.find_all(ReviewDraft) if item.review_id == review.id), None)
-        if draft:
-            reply.insert("1.0", draft.text)
+    def review_row(self, review):
+        status = "На проверку" if self.s.panel.show_suspicious_label(review) else "Отвечен" if review.reply_id else "Новый"
+        return review.created_at.strftime("%d.%m.%Y"), self.product_name(review.product_id), f"{review.rating}/5", self.s.results.get_result(review.id).sentiment, status
+
+    def open_review(self, review_id):
+        self.reply_page(next(r for r in self.s.reviews.get_reviews() if r.id == review_id))
+
+    def reply_page(self, review):
+        self.selected = review
+        self.draft = next(iter(self.s.reviews.find(lambda x: isinstance(x, ReviewDraft) and x.review_id == review.id)), None)
+        self.page("Ответ клиенту")
+        self.review_details(review)
+        self.reply_controls()
+
+    def review_details(self, review):
+        result = self.s.results.get_result(review.id)
+        label(self.body, f"{self.product_name(review.product_id)}  ·  {review.rating}/5  ·  {review.created_at:%d.%m.%Y}")
+        label(self.body, self.user.read_review(review))
+        label(self.body, f"{result.sentiment}  ·  Темы: {', '.join(result.categories)}  ·  Сущности: {', '.join(result.key_entities) or 'не найдены'}")
+        label(self.body, f"Оценка доверия по правилам: {review.trust_level:.0%}. " + ("Требуется ручная проверка." if review.suspicious else "Признаков риска не найдено."))
+
+    def reply_controls(self):
+        reply = self.s.reviews.get_reply(self.selected.id)
+        if reply:
+            label(self.body, "Отправленный ответ: " + reply.text)
         else:
-            reply.insert("1.0", self.text_generator.generate_reply(review, result.sentiment))
-        actions = ttk.Frame(card, style="Card.TFrame")
-        actions.pack(anchor="w")
-        self._button(actions, "Сохранить черновик", lambda: self._save_draft(review, reply.get("1.0", "end").strip()), True).pack(side="left", padx=(0, 8))
-        self._button(actions, "Отправить ответ", lambda: self._send_reply(review, reply.get("1.0", "end").strip())).pack(side="left")
-        self._button(card, "Назад к списку", self.show_manager_reviews).pack(anchor="w", pady=(14, 0))
-        self._nav("manager")
+            self.reply_editor()
 
-    def _save_draft(self, review: Review, text: str) -> None:
-        current = next((item for item in self.storage.find_all(ReviewDraft) if item.review_id == review.id), None)
-        if current:
-            current.text = text
-        else:
-            self.reviews.save_draft(ReviewDraft(review_id=review.id, text=text))
-        messagebox.showinfo("Черновик", "Черновик ответа сохранён.")
+    def reply_editor(self):
+        self.reply_text = text_area(self.body, "Ваш ответ")
+        self.reply_text.insert("1.0", self.draft.text if self.draft else "")
+        button(self.body, "Подготовить черновик по теме отзыва", self.request_draft)
+        self.reply_actions()
 
-    def _send_reply(self, review: Review, text: str) -> None:
+    def reply_actions(self):
+        button(self.body, "Сохранить черновик", self.save_draft)
+        button(self.body, "Отправить ответ", lambda: self.guarded(self.send_reply))
+        button(self.body, "Назад к отзывам", self.manager_home)
+
+    def request_draft(self):
+        self.draft = self.s.panel.request_draft(self.selected, self.s.results.get_result(self.selected.id))
+        self.reply_text.delete("1.0", "end")
+        self.reply_text.insert("1.0", self.draft.text)
+
+    def save_draft(self):
+        self.draft = self.draft or ReviewDraft(review_id=self.selected.id)
+        self.s.panel.edit_draft(self.draft, self.reply_text.get("1.0", "end").strip())
+        messagebox.showinfo("Черновик сохранён", "Текст доступен при следующем открытии отзыва.")
+
+    def send_reply(self):
+        text = self.reply_text.get("1.0", "end").strip()
         if not text:
-            messagebox.showerror("Ответ не отправлен", "Введите текст ответа.")
-            return
-        reply = self.user.write_reply(review, text)
-        self.reviews.save_reply(reply)
-        review.reply_id = reply.id
-        messagebox.showinfo("Ответ отправлен", "Ответ сохранён в системе.")
-        self.show_manager_reviews()
+            raise ValueError("Введите ответ")
+        self.s.reply.send(self.user, self.selected, text, self.draft is not None and self.draft.status == "Сгенерирован")
+        self.manager_home()

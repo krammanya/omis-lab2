@@ -64,6 +64,7 @@ class Review:
     id: str = field(default_factory=new_id)
     text: str = ""
     rating: int = 0
+    recommendation: int | None = None
     anonymous: bool = False
     created_at: date = field(default_factory=date.today)
     client_id: str = ""
@@ -89,8 +90,6 @@ class AnalysisResult:
     sentiment: str = "Нейтральная"
     categories: list[str] = field(default_factory=list)
     key_entities: list[str] = field(default_factory=list)
-    suspicious: bool = False
-    manipulation_level: float = 0.0
 
 
 @dataclass
@@ -116,7 +115,7 @@ class UserProfile:
 class Metric:
     id: str = field(default_factory=new_id)
     name: str = ""
-    value: float = 0.0
+    value: float | None = None
     calculated_at: datetime = field(default_factory=datetime.now)
 
 
@@ -140,20 +139,6 @@ class ReviewDraft:
     review_id: str = ""
     text: str = ""
     status: str = "Черновик"
-
-
-@dataclass
-class Reply:
-    id: str = field(default_factory=new_id)
-    text: str = ""
-    review_id: str = ""
-
-
-@dataclass
-class ReviewAnalytics:
-    sentiment: str = "Нейтральная"
-    categories: list[str] = field(default_factory=list)
-    key_entities: list[str] = field(default_factory=list)
 
 
 @dataclass
