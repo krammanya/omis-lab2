@@ -1,11 +1,5 @@
-"""Entry point for the customer experience review platform."""
-
-from app.ui import ReviewPlatformApp
-
-
-def main() -> None:
-    ReviewPlatformApp().run()
-
+"""Запуск интерфейса лабораторной работы."""
+from app.ui import run
 
 if __name__ == "__main__":
-    main()
+    run()
