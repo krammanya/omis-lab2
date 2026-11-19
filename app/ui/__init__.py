@@ -124,7 +124,7 @@ def reply_window():
     tk.Label(frame, text="Ваш ответ:", bg="white").pack(anchor="w", padx=15)
     tk.Text(frame, height=5, relief="solid", bd=1).pack(fill="x", padx=15)
     actions = tk.Frame(frame, bg="white"); actions.pack(anchor="w", padx=8)
-    action(actions, "Сгенерировать ответ ИИ", lambda: unavailable("Генерация недоступна: диаграмма задаёт метод, но не описывает алгоритм или подключение к модели."), "#e3d7eb")
+    action(actions, "Сгенерировать ответ ИИ", lambda: unavailable("Генерация недоступна: на базовой диаграмме классов нет метода генерации черновика."), "#e3d7eb")
     action(actions, "Отправить ответ", lambda: unavailable("Ответ не сохраняется: на диаграмме не задана конкретная реализация БД."), "#dcefdc")
     action(actions, "Назад", manager_list)
 
